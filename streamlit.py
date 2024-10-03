@@ -78,6 +78,9 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings):
         modified_dir = "modified_gridset"
         shutil.copytree(template_gridset_dir, modified_dir, dirs_exist_ok=True)
 
+        # Counter for replacements
+        replacements_count = 0
+
         for foldername, _, filenames in os.walk(modified_dir):
             for filename in filenames:
                 if filename.endswith(".xml"):
@@ -102,12 +105,21 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings):
                             if current_caption in keyman_mappings:
                                 new_character = keyman_mappings[current_caption]
 
-                                # Update the <Caption> element
-                                caption_element.text = new_character
+                                # Check if the caption and parameter need updating
+                                if caption_element.text != new_character:
+                                    # Update the <Caption> element
+                                    caption_element.text = new_character
+                                    replacements_count += (
+                                        1  # Increment the counter for each replacement
+                                    )
 
-                                # Correctly update the 'Arguments' parameter
-                                parameter_element.set("Key", "Arguments")
-                                parameter_element.text = f"type:{new_character}"  # Correctly set the new character
+                                if parameter_element.text != f"type:{new_character}":
+                                    # Correctly update the 'Arguments' parameter
+                                    parameter_element.set("Key", "Arguments")
+                                    parameter_element.text = f"type:{new_character}"
+                                    replacements_count += (
+                                        1  # Increment the counter for each replacement
+                                    )
 
                     # Write the modified XML file back to disk
                     tree.write(xml_path, encoding="utf-8", xml_declaration=True)
@@ -126,6 +138,10 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings):
 
         # Prepare the final in-memory zip file for download
         modified_gridset_io.seek(0)
+
+        # Print or log the number of replacements
+        print(f"Total characters replaced: {replacements_count}")
+
         return modified_gridset_io
 
     except ET.ParseError as e:
