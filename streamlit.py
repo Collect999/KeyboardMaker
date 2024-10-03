@@ -105,12 +105,14 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings):
                                 # Update the <Caption> element
                                 caption_element.text = new_character
 
+                                # Correctly update the 'Arguments' parameter
                                 parameter_element.set("Key", "Arguments")
                                 parameter_element.text = f"type:{new_character}"  # Correctly set the new character
 
-                    tree.write(xml_path)
+                    # Write the modified XML file back to disk
+                    tree.write(xml_path, encoding="utf-8", xml_declaration=True)
 
-        # Repack the modified gridset
+        # Repack the modified gridset into a zip file
         modified_gridset_io = io.BytesIO()
         with zipfile.ZipFile(modified_gridset_io, "w") as zipf:
             for root, dirs, files in os.walk(modified_dir):
@@ -119,12 +121,19 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings):
                     relative_path = os.path.relpath(full_path, modified_dir)
                     zipf.write(full_path, relative_path)
 
+        # Cleanup the temporary directory
         shutil.rmtree(modified_dir)
+
+        # Prepare the final in-memory zip file for download
         modified_gridset_io.seek(0)
         return modified_gridset_io
 
+    except ET.ParseError as e:
+        print(f"XML Parsing Error: {e}")
+        return None
+
     except Exception as e:
-        st.error(f"An unexpected error occurred: {e}")
+        print(f"An unexpected error occurred: {e}")
         return None
 
 
