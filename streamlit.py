@@ -9,7 +9,7 @@ import shutil
 import json
 
 # Streamlit setup
-st.title("Dynamic Keyboard Layout Modifier")
+st.title("Dynamic Keyboard Layout Maker for AAC")
 
 # Global variables
 keyman_api_url = "https://api.keyman.com/search/2.0"
@@ -26,7 +26,7 @@ def unzip_template_gridset():
         os.makedirs(template_gridset_dir, exist_ok=True)
         with zipfile.ZipFile("template.gridset", "r") as zip_ref:
             zip_ref.extractall(template_gridset_dir)
-        st.write("Template gridset unzipped.")
+        # st.write("Template gridset unzipped.")
 
 
 # Function to search Keyman keyboards and filter out those not in kvks_index
@@ -113,7 +113,7 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings, placeholder="*"):
         keyman_mappings = {k.lower(): v for k, v in keyman_mappings.items()}
 
         # Debug: Print out key mappings to ensure they're correct
-        st.write(f"Keyman Mappings: {keyman_mappings}")
+        # st.write(f"Keyman Mappings: {keyman_mappings}")
 
         # Counter for replacements
         replacements_count = 0
@@ -121,7 +121,7 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings, placeholder="*"):
         for foldername, _, filenames in os.walk(modified_dir):
             for filename in filenames:
                 if filename == "grid.xml":
-                    print(f"Processing {filename}")
+                    # print(f"Processing {filename}")
                     xml_path = os.path.join(foldername, filename)
 
                     # Parse the existing XML file
@@ -140,11 +140,11 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings, placeholder="*"):
                         )
 
                         # Debug: Print current caption from XML
-                        print(f"Current Caption in XML: {current_caption}")
+                        # print(f"Current Caption in XML: {current_caption}")
 
                         # Handle caption modifications but avoid replacing the "spacebar" key
                         if is_spacebar_key(command_elements):
-                            print("Skipping modification for spacebar key.")
+                            # print("Skipping modification for spacebar key.")
                             continue
 
                         # Ensure the vkey (from the KVKS) is mapped to the correct character
@@ -155,9 +155,9 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings, placeholder="*"):
                                 new_character = keyman_mappings[vkey]
 
                                 # Debug: Print the matched vkey and new character
-                                print(
-                                    f"Matched vkey: {vkey}, New character: {new_character}"
-                                )
+                                # print(
+                                #    f"Matched vkey: {vkey}, New character: {new_character}"
+                                # )
 
                                 if current_caption == "space":
                                     # For 'space', we will use CDATA for space
@@ -180,9 +180,9 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings, placeholder="*"):
                                         if vkey in keyman_mappings:
                                             param.text = keyman_mappings[vkey]
                                             replacements_count += 1
-                                            print(
-                                                f"Replaced '{current_caption}' with '{param.text}'"
-                                            )
+                                            # print(
+                                            #     f"Replaced '{current_caption}' with '{param.text}'"
+                                            # )
 
                     # Write changes to a string instead of a file
                     xml_output = io.StringIO()
@@ -197,7 +197,7 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings, placeholder="*"):
                         f.write(updated_xml_str)
 
         # Log results
-        st.write(f"Total characters replaced: {replacements_count}")
+        # st.write(f"Total characters replaced: {replacements_count}")
 
         # Repack the modified gridset into a zip file
         modified_gridset_io = io.BytesIO()
@@ -230,6 +230,10 @@ if "selected_keyboard" not in st.session_state:
 
 # Unzip the template.gridset (only once)
 unzip_template_gridset()
+
+st.write(
+    "This tool allows you to create a template Gridset for the Grid3 with a keyboard layout for a given language. Keyboards are based on http://keyman.com You may find 'basic' versions better for your use. Please note we dont currently have shifted/ctrl states etc."
+)
 
 # UI: Search for a language
 language_query = st.text_input("Enter a language to search for:")
@@ -264,7 +268,7 @@ if st.session_state.selected_keyboard and st.button("Download and Process Keyboa
         kvks_content = fetch_kvks_file(github_link)
         if kvks_content:
             keyman_mappings = parse_kvks_content(kvks_content)
-            st.write(f"Extracted key mappings from KVKS: {keyman_mappings}")
+            # st.write(f"Extracted key mappings from KVKS: {keyman_mappings}")
 
             modified_gridset = modify_gridset_with_keyboard_mappings(keyman_mappings)
             if modified_gridset:
