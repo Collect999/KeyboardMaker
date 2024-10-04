@@ -109,13 +109,22 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings, placeholder="*"):
         modified_dir = "modified_gridset"
         shutil.copytree(template_gridset_dir, modified_dir, dirs_exist_ok=True)
 
+        # Normalize keyman mappings for case-insensitive matching
         keyman_mappings = {k.lower(): v for k, v in keyman_mappings.items()}
+
+        # Debug: Print out key mappings to ensure they're correct
+        st.write(f"Keyman Mappings: {keyman_mappings}")
+
+        # Counter for replacements
         replacements_count = 0
 
         for foldername, _, filenames in os.walk(modified_dir):
             for filename in filenames:
                 if filename == "grid.xml":
+                    print(f"Processing {filename}")
                     xml_path = os.path.join(foldername, filename)
+
+                    # Parse the existing XML file
                     tree = ET.parse(xml_path)
                     root = tree.getroot()
 
@@ -123,41 +132,74 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings, placeholder="*"):
                         caption_element = cell.find("Content/CaptionAndImage/Caption")
                         command_elements = cell.findall(".//Commands/Command")
 
+                        # Get the current caption from the XML
                         current_caption = (
                             caption_element.text.strip().lower()
                             if caption_element is not None and caption_element.text
                             else ""
                         )
 
+                        # Debug: Print current caption from XML
+                        print(f"Current Caption in XML: {current_caption}")
+
+                        # Handle caption modifications but avoid replacing the "spacebar" key
                         if is_spacebar_key(command_elements):
+                            print("Skipping modification for spacebar key.")
                             continue
 
+                        # Ensure the vkey (from the KVKS) is mapped to the correct character
+                        vkey = f"k_{current_caption}".lower()  # Convert to lowercase
+
                         if caption_element is not None:
-                            if current_caption in keyman_mappings:
-                                new_character = keyman_mappings[current_caption]
-                                caption_element.text = (
-                                    " " if current_caption == "space" else new_character
+                            if vkey in keyman_mappings:
+                                new_character = keyman_mappings[vkey]
+
+                                # Debug: Print the matched vkey and new character
+                                print(
+                                    f"Matched vkey: {vkey}, New character: {new_character}"
                                 )
 
+                                if current_caption == "space":
+                                    # For 'space', we will use CDATA for space
+                                    caption_element.text = " "
+                                else:
+                                    # Use the placeholder if mapping results in an empty string
+                                    caption_element.text = new_character or placeholder
+                                    replacements_count += 1
+
+                            elif current_caption == "":
+                                # If no mapping and caption is empty, replace with a placeholder
+                                caption_element.text = placeholder
+
+                        # Handle command parameter modifications (if applicable)
                         if command_elements:
                             for command in command_elements:
                                 parameter_elements = command.findall("Parameter")
                                 for param in parameter_elements:
                                     if param.get("Key") == "letter":
-                                        if current_caption in keyman_mappings:
-                                            param.text = keyman_mappings[
-                                                current_caption
-                                            ]
+                                        if vkey in keyman_mappings:
+                                            param.text = keyman_mappings[vkey]
                                             replacements_count += 1
+                                            print(
+                                                f"Replaced '{current_caption}' with '{param.text}'"
+                                            )
 
+                    # Write changes to a string instead of a file
                     xml_output = io.StringIO()
                     tree.write(xml_output, encoding="unicode", xml_declaration=False)
+
+                    # Modify the XML output string to inject CDATA and ensure the namespace
                     xml_str = xml_output.getvalue()
                     updated_xml_str = add_cdata_for_space_and_namespace(xml_str)
 
+                    # Save the updated XML back to the file
                     with open(xml_path, "w", encoding="utf-8") as f:
                         f.write(updated_xml_str)
 
+        # Log results
+        st.write(f"Total characters replaced: {replacements_count}")
+
+        # Repack the modified gridset into a zip file
         modified_gridset_io = io.BytesIO()
         with zipfile.ZipFile(modified_gridset_io, "w") as zipf:
             for root, dirs, files in os.walk(modified_dir):
@@ -168,7 +210,12 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings, placeholder="*"):
 
         shutil.rmtree(modified_dir)
         modified_gridset_io.seek(0)
+
         return modified_gridset_io
+
+    except ET.ParseError as e:
+        st.error(f"XML Parsing Error: {e}")
+        return None
 
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
