@@ -3,6 +3,8 @@ import json
 import xml.etree.ElementTree as ET
 
 
+# git clone https://github.com/keymanapp/keyboards.git
+# then run this
 def create_kvks_index(base_dir):
     kvks_index = {}
 
