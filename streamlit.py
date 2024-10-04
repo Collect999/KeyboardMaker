@@ -72,6 +72,25 @@ def extract_keyman_mappings(js_file_path):
     return key_mappings
 
 
+# A hack.
+def add_cdata_space_and_namespace(xml_str):
+    """
+    Function to add CDATA for space and ensure the xmlns:xsi namespace is included.
+    """
+    # Replace <Caption> </Caption> with <Caption><![CDATA[ ]]></Caption>
+    xml_str = xml_str.replace(
+        "<Caption> </Caption>", "<Caption><![CDATA[ ]]></Caption>"
+    )
+
+    # Ensure the namespace is in place if not already present
+    if "xmlns:xsi" not in xml_str:
+        xml_str = xml_str.replace(
+            "<Grid>", '<Grid xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+        )
+
+    return xml_str
+
+
 # Function to modify gridset XML with extracted mappings
 def modify_gridset_with_keyboard_mappings(keyman_mappings):
     try:
@@ -90,6 +109,7 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings):
                     print(f"Processing {filename}")
                     xml_path = os.path.join(foldername, filename)
 
+                    # Parse the existing XML file and preserve namespaces
                     tree = ET.parse(xml_path)
                     root = tree.getroot()
 
@@ -103,9 +123,13 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings):
                             current_caption = (
                                 caption_element.text.strip().lower()
                                 if caption_element.text
-                                else "None"
+                                else ""
                             )
                             print(f"Current Caption: {current_caption}")
+
+                            # Handle CDATA for space
+                            if current_caption == "space":
+                                caption_element.text = " "
 
                         if command_elements:
                             print("Commands found in this cell:")
@@ -143,7 +167,18 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings):
                         else:
                             print("No Commands found in this cell.")
 
-        tree.write(xml_path, encoding="utf-8", xml_declaration=True)
+                    # Write changes to a string instead of a file
+                    xml_output = io.StringIO()
+                    tree.write(xml_output, encoding="unicode", xml_declaration=False)
+
+                    # Modify the XML output string to inject CDATA and ensure the namespace
+                    xml_str = xml_output.getvalue()
+                    updated_xml_str = add_cdata_space_and_namespace(xml_str)
+
+                    # Save the updated XML back to the file
+                    with open(xml_path, "w", encoding="utf-8") as f:
+                        f.write(updated_xml_str)
+
         # Log results
         print(f"Total characters replaced: {replacements_count}")
 
