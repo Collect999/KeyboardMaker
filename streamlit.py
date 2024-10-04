@@ -78,51 +78,74 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings):
         modified_dir = "modified_gridset"
         shutil.copytree(template_gridset_dir, modified_dir, dirs_exist_ok=True)
 
+        # Normalize keyman mappings for case-insensitive matching
+        keyman_mappings = {k.lower(): v for k, v in keyman_mappings.items()}
+
         # Counter for replacements
         replacements_count = 0
 
         for foldername, _, filenames in os.walk(modified_dir):
             for filename in filenames:
-                if filename.endswith(".xml"):
+                if filename == "grid.xml":
+                    print(f"Processing {filename}")
                     xml_path = os.path.join(foldername, filename)
 
                     tree = ET.parse(xml_path)
                     root = tree.getroot()
 
                     for cell in root.findall(".//Cell"):
-                        caption_element = cell.find(".//CaptionAndImage/Caption")
-                        parameter_element = cell.find(
-                            './/Commands/Command/Parameter[@Key="Arguments"]'
-                        )
+                        caption_element = cell.find("Content/CaptionAndImage/Caption")
+                        command_elements = cell.findall(".//Commands/Command")
 
-                        if (
-                            caption_element is not None
-                            and parameter_element is not None
-                        ):
-                            current_caption = caption_element.text.lower()
+                        print(f"Caption Element: {caption_element}")
 
-                            # Look up the new character from keyman mappings
-                            if current_caption in keyman_mappings:
-                                new_character = keyman_mappings[current_caption]
+                        if caption_element is not None:
+                            current_caption = (
+                                caption_element.text.strip().lower()
+                                if caption_element.text
+                                else "None"
+                            )
+                            print(f"Current Caption: {current_caption}")
 
-                                # Check if the caption and parameter need updating
-                                if caption_element.text != new_character:
-                                    # Update the <Caption> element
-                                    caption_element.text = new_character
-                                    replacements_count += (
-                                        1  # Increment the counter for each replacement
+                        if command_elements:
+                            print("Commands found in this cell:")
+                            for command in command_elements:
+                                parameter_elements = command.findall("Parameter")
+                                for param in parameter_elements:
+                                    print(
+                                        f"Parameter Key: {param.get('Key')}, Parameter Value: {param.text}"
                                     )
 
-                                if parameter_element.text != f"type:{new_character}":
-                                    # Correctly update the 'Arguments' parameter
-                                    parameter_element.set("Key", "Arguments")
-                                    parameter_element.text = f"type:{new_character}"
-                                    replacements_count += (
-                                        1  # Increment the counter for each replacement
-                                    )
+                                    # Only update the 'letter' or 'Arguments' key
+                                    if (
+                                        param.get("Key") == "letter"
+                                        or param.get("Key") == "Arguments"
+                                    ):
+                                        if current_caption in keyman_mappings:
+                                            new_character = keyman_mappings[
+                                                current_caption
+                                            ]
 
-                    # Write the modified XML file back to disk
-                    tree.write(xml_path, encoding="utf-8", xml_declaration=True)
+                                            # Update the caption text
+                                            caption_element.text = new_character
+
+                                            # Update the parameter text to match the new character
+                                            param.text = (
+                                                new_character
+                                                if param.get("Key") == "letter"
+                                                else f"type:{new_character}"
+                                            )
+
+                                            replacements_count += 1
+                                            print(
+                                                f"Replaced '{current_caption}' with '{new_character}'"
+                                            )
+                        else:
+                            print("No Commands found in this cell.")
+
+        tree.write(xml_path, encoding="utf-8", xml_declaration=True)
+        # Log results
+        print(f"Total characters replaced: {replacements_count}")
 
         # Repack the modified gridset into a zip file
         modified_gridset_io = io.BytesIO()
@@ -138,9 +161,6 @@ def modify_gridset_with_keyboard_mappings(keyman_mappings):
 
         # Prepare the final in-memory zip file for download
         modified_gridset_io.seek(0)
-
-        # Print or log the number of replacements
-        print(f"Total characters replaced: {replacements_count}")
 
         return modified_gridset_io
 
