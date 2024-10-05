@@ -1,19 +1,23 @@
 import streamlit as st
 import requests
-import zipfile
 import os
 import xml.etree.ElementTree as ET
-import re
 import io
+import zipfile
 import shutil
 import json
 
 # Streamlit setup
 st.title("Dynamic Keyboard Layout Maker for AAC")
 
+# Enable or disable debugging
+debugging = False
+
 # Global variables
 keyman_api_url = "https://api.keyman.com/search/2.0"
-template_gridset_dir = "unzipped_template_gridset"
+template_gridset_dir = (
+    "unzipped_template_gridset"  # Directory for unzipping the gridset
+)
 
 # Load the KVKS index JSON file
 with open("kvks_index.json", "r") as f:
@@ -26,7 +30,8 @@ def unzip_template_gridset():
         os.makedirs(template_gridset_dir, exist_ok=True)
         with zipfile.ZipFile("template.gridset", "r") as zip_ref:
             zip_ref.extractall(template_gridset_dir)
-        # st.write("Template gridset unzipped.")
+        if debugging:
+            st.write("Template gridset unzipped.")
 
 
 # Function to search Keyman keyboards and filter out those not in kvks_index
@@ -65,22 +70,22 @@ def fetch_kvks_file(github_link):
         return None
 
 
-# Function to parse KVKS content
+# Function to parse KVKS content and extract layer mappings
 def parse_kvks_content(kvks_content):
     tree = ET.ElementTree(ET.fromstring(kvks_content))
     root = tree.getroot()
 
-    key_mappings = {}
-
+    layers_mapping = {}
     for layer in root.findall(".//layer"):
+        shift_state = layer.get("shift", "")
+        key_mappings = {}
         for key in layer.findall(".//key"):
             vkey = key.get("vkey")
             value = key.text or ""
-
-            # Map the virtual key (vkey) to the corresponding value
             key_mappings[vkey] = value
+        layers_mapping[shift_state] = key_mappings
 
-    return key_mappings
+    return layers_mapping
 
 
 # A hack: Add CDATA for space and namespace in the XML string
@@ -95,134 +100,87 @@ def add_cdata_for_space_and_namespace(xml_str):
     return xml_str
 
 
-# Function to check if the cell is for the spacebar key
-def is_spacebar_key(command_elements):
-    for command in command_elements:
-        if command.get("ID") == "Action.Space":
-            return True
-    return False
-
-
-# Function to modify gridset XML with extracted mappings
-def modify_gridset_with_keyboard_mappings(keyman_mappings, placeholder="*"):
+# Function to modify grid XML file with key mappings from the respective layer
+def modify_grid_xml_with_layer(grid_xml_path, key_mappings, placeholder="*"):
     try:
-        modified_dir = "modified_gridset"
-        shutil.copytree(template_gridset_dir, modified_dir, dirs_exist_ok=True)
+        if debugging:
+            st.write(
+                f"Modifying grid: {grid_xml_path} with key mappings: {key_mappings}"
+            )
 
-        # Normalize keyman mappings for case-insensitive matching
-        keyman_mappings = {k.lower(): v for k, v in keyman_mappings.items()}
-
-        # Debug: Print out key mappings to ensure they're correct
-        # st.write(f"Keyman Mappings: {keyman_mappings}")
-
-        # Counter for replacements
+        tree = ET.parse(grid_xml_path)
+        root = tree.getroot()
         replacements_count = 0
 
-        for foldername, _, filenames in os.walk(modified_dir):
-            for filename in filenames:
-                if filename == "grid.xml":
-                    # print(f"Processing {filename}")
-                    xml_path = os.path.join(foldername, filename)
+        for cell in root.findall(".//Cell"):
+            caption_element = cell.find("Content/CaptionAndImage/Caption")
+            command_elements = cell.findall(".//Commands/Command")
 
-                    # Parse the existing XML file
-                    tree = ET.parse(xml_path)
-                    root = tree.getroot()
+            if caption_element is not None:
+                current_caption = (
+                    caption_element.text.strip() if caption_element.text else ""
+                )
 
-                    for cell in root.findall(".//Cell"):
-                        caption_element = cell.find("Content/CaptionAndImage/Caption")
-                        command_elements = cell.findall(".//Commands/Command")
+                # If the current caption is a mapped key, replace it
+                vkey = f"K_{current_caption.upper()}"
 
-                        # Get the current caption from the XML
-                        current_caption = (
-                            caption_element.text.strip().lower()
-                            if caption_element is not None and caption_element.text
-                            else ""
-                        )
+                # Update the caption and command if found in key mappings
+                if vkey in key_mappings:
+                    new_character = key_mappings[vkey] or placeholder
+                    caption_element.text = new_character
 
-                        # Debug: Print current caption from XML
-                        # print(f"Current Caption in XML: {current_caption}")
+                    # Update the command parameter if it exists
+                    for command in command_elements:
+                        parameter_elements = command.findall("Parameter")
+                        for param in parameter_elements:
+                            if param.get("Key") == "letter":
+                                param.text = new_character
 
-                        # Handle caption modifications but avoid replacing the "spacebar" key
-                        if is_spacebar_key(command_elements):
-                            # print("Skipping modification for spacebar key.")
-                            continue
+                    replacements_count += 1
 
-                        # Ensure the vkey (from the KVKS) is mapped to the correct character
-                        vkey = f"k_{current_caption}".lower()  # Convert to lowercase
+        # Write changes to a string, inject CDATA and namespace, then save the file
+        xml_output = io.StringIO()
+        tree.write(xml_output, encoding="unicode", xml_declaration=False)
+        xml_str = xml_output.getvalue()
+        updated_xml_str = add_cdata_for_space_and_namespace(xml_str)
 
-                        if caption_element is not None:
-                            if vkey in keyman_mappings:
-                                new_character = keyman_mappings[vkey]
+        # Save the updated XML back to the file
+        with open(grid_xml_path, "w", encoding="utf-8") as f:
+            f.write(updated_xml_str)
 
-                                # Debug: Print the matched vkey and new character
-                                # print(
-                                #    f"Matched vkey: {vkey}, New character: {new_character}"
-                                # )
-
-                                if current_caption == "space":
-                                    # For 'space', we will use CDATA for space
-                                    caption_element.text = " "
-                                else:
-                                    # Use the placeholder if mapping results in an empty string
-                                    caption_element.text = new_character or placeholder
-                                    replacements_count += 1
-
-                            elif current_caption == "":
-                                # If no mapping and caption is empty, replace with a placeholder
-                                caption_element.text = placeholder
-
-                        # Handle command parameter modifications (if applicable)
-                        if command_elements:
-                            for command in command_elements:
-                                parameter_elements = command.findall("Parameter")
-                                for param in parameter_elements:
-                                    if param.get("Key") == "letter":
-                                        if vkey in keyman_mappings:
-                                            param.text = keyman_mappings[vkey]
-                                            replacements_count += 1
-                                            # print(
-                                            #     f"Replaced '{current_caption}' with '{param.text}'"
-                                            # )
-
-                    # Write changes to a string instead of a file
-                    xml_output = io.StringIO()
-                    tree.write(xml_output, encoding="unicode", xml_declaration=False)
-
-                    # Modify the XML output string to inject CDATA and ensure the namespace
-                    xml_str = xml_output.getvalue()
-                    updated_xml_str = add_cdata_for_space_and_namespace(xml_str)
-
-                    # Save the updated XML back to the file
-                    with open(xml_path, "w", encoding="utf-8") as f:
-                        f.write(updated_xml_str)
-
-        # Log results
-        # st.write(f"Total characters replaced: {replacements_count}")
-
-        # Repack the modified gridset into a zip file
-        modified_gridset_io = io.BytesIO()
-        with zipfile.ZipFile(modified_gridset_io, "w") as zipf:
-            for root, dirs, files in os.walk(modified_dir):
-                for file in files:
-                    full_path = os.path.join(root, file)
-                    relative_path = os.path.relpath(full_path, modified_dir)
-                    zipf.write(full_path, relative_path)
-
-        shutil.rmtree(modified_dir)
-        modified_gridset_io.seek(0)
-
-        return modified_gridset_io
+        if debugging:
+            st.write(f"Modified {replacements_count} keys in {grid_xml_path}")
 
     except ET.ParseError as e:
         st.error(f"XML Parsing Error: {e}")
-        return None
-
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
-        return None
 
 
-# Initialize session state variables
+# Modify all layers of the gridset based on the layers in KVKS
+def modify_gridset_with_kvks_layers(kvks_mappings, gridset_base_dir):
+    # Map of folders to layer shift values
+    folder_to_layer_mapping = {
+        "default": "",  # no shift
+        "shift": "S",
+        "ctrl": "C",
+        "shift_ctrl": "SC",
+        "alt": "RA",
+        "shift_alt": "SRA",
+        "ctrl_alt": "CRA",
+        "shift_ctrl_alt": "SCA",
+    }
+
+    for folder, layer in folder_to_layer_mapping.items():
+        grid_xml_path = os.path.join(gridset_base_dir, "Grids", folder, "grid.xml")
+        if os.path.exists(grid_xml_path):
+            key_mappings = kvks_mappings.get(layer, {})
+            if debugging:
+                st.write(f"Modifying {grid_xml_path} with layer: {layer}")
+            modify_grid_xml_with_layer(grid_xml_path, key_mappings)
+
+
+# Streamlit UI for language search and keyboard selection
 if "keyboards" not in st.session_state:
     st.session_state.keyboards = []
 if "selected_keyboard" not in st.session_state:
@@ -232,7 +190,7 @@ if "selected_keyboard" not in st.session_state:
 unzip_template_gridset()
 
 st.write(
-    "This tool allows you to create a template Gridset for the Grid3 with a keyboard layout for a given language. Keyboards are based on http://keyman.com You may find 'basic' versions better for your use. Please note we dont currently have shifted/ctrl states etc."
+    "This tool allows you to create a template Gridset for the Grid3 with a keyboard layout for a given language. Keyboards are based on http://keyman.com You may find 'basic' versions better for your use. Please note we don't currently have shifted/ctrl states etc."
 )
 
 # UI: Search for a language
@@ -268,15 +226,36 @@ if st.session_state.selected_keyboard and st.button("Download and Process Keyboa
         kvks_content = fetch_kvks_file(github_link)
         if kvks_content:
             keyman_mappings = parse_kvks_content(kvks_content)
-            # st.write(f"Extracted key mappings from KVKS: {keyman_mappings}")
+            if debugging:
+                st.write(f"Extracted key mappings from KVKS: {keyman_mappings}")
 
-            modified_gridset = modify_gridset_with_keyboard_mappings(keyman_mappings)
-            if modified_gridset:
+            # Modify gridset with KVKS layers
+            modify_gridset_with_kvks_layers(keyman_mappings, template_gridset_dir)
+
+            try:
+                # Repack the modified gridset into a zip file for download
+                modified_gridset_io = io.BytesIO()
+                with zipfile.ZipFile(modified_gridset_io, "w") as zipf:
+                    for root, dirs, files in os.walk(template_gridset_dir):
+                        for file in files:
+                            full_path = os.path.join(root, file)
+                            relative_path = os.path.relpath(
+                                full_path, template_gridset_dir
+                            )
+                            zipf.write(full_path, relative_path)
+
+                modified_gridset_io.seek(0)
                 filename = f"{keyboard_id}.gridset"
+                if debugging:
+                    st.write(f"Successfully created zip file: {filename}")
                 st.download_button(
-                    "Download Modified Gridset", modified_gridset.getvalue(), filename
+                    "Download Modified Gridset",
+                    modified_gridset_io.getvalue(),
+                    filename,
                 )
+            except Exception as e:
+                st.error(f"Failed to create zip file: {e}")
         else:
-            st.error(f"Failed to fetch KVKS file.{github_link}")
+            st.error(f"Failed to fetch KVKS file from {github_link}")
     else:
         st.error(f"Keyboard {keyboard_id} not found in KVKS index.")
