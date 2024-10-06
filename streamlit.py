@@ -26,12 +26,17 @@ with open("kvks_index.json", "r") as f:
 
 # Function to unzip the template.gridset file (only once)
 def unzip_template_gridset():
-    if not os.path.exists(template_gridset_dir):
-        os.makedirs(template_gridset_dir, exist_ok=True)
-        with zipfile.ZipFile("template.gridset", "r") as zip_ref:
-            zip_ref.extractall(template_gridset_dir)
-        if debugging:
-            st.write("Template gridset unzipped.")
+    if os.path.exists(template_gridset_dir):
+        # Clear the directory before unzipping (to avoid stale data)
+        shutil.rmtree(template_gridset_dir)
+
+    os.makedirs(template_gridset_dir, exist_ok=True)
+
+    with zipfile.ZipFile("template.gridset", "r") as zip_ref:
+        zip_ref.extractall(template_gridset_dir)
+
+    if debugging:
+        st.write("Template gridset unzipped and directory cleared.")
 
 
 # Function to search Keyman keyboards and filter out those not in kvks_index
