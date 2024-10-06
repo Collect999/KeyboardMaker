@@ -1,5 +1,6 @@
 temp_*
 unzipped_*
+node_modules
 keyboards/
 # Byte-compiled / optimized / DLL files
 __pycache__/
