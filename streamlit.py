@@ -195,7 +195,10 @@ if "selected_keyboard" not in st.session_state:
 unzip_template_gridset()
 
 st.write(
-    "This tool allows you to create a template Gridset for the Grid3 with a keyboard layout for a given language. Keyboards are based on http://keyman.com You may find 'basic' versions better for your use. **nb; some keyboards will need to work right to left. you need to change your language settings for this to work. You may also need to displwy them with a suitable fomt**"
+    "This tool allows you to create a template Gridset for the Grid3 with a keyboard layout for a given language. "
+    "Keyboards are based on [Keyman](http://keyman.com). You may find 'basic' versions better for your use.\n\n"
+    "**Note:** Some keyboards require right-to-left input, so ensure your language settings are configured correctly. "
+    "You may also need to use a suitable font to display certain characters accurately."
 )
 
 # UI: Search for a language
